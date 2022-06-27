@@ -163,7 +163,7 @@ class MobileScanner(private val activity: Activity, private val textureRegistry:
                 }
                 // Preview
                 val surfaceProvider = Preview.SurfaceProvider { request ->
-                        textureEntry!!.surfaceTexture()?.let {
+                        textureEntry?.surfaceTexture()?.let {
                             it.setDefaultBufferSize(request.resolution.width, request.resolution.height)
                             val surface = Surface(it)
                             request.provideSurface(surface, executor) { }
