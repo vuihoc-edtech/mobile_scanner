@@ -163,10 +163,11 @@ class MobileScanner(private val activity: Activity, private val textureRegistry:
                 }
                 // Preview
                 val surfaceProvider = Preview.SurfaceProvider { request ->
-                    val texture = textureEntry!!.surfaceTexture()
-                    texture.setDefaultBufferSize(request.resolution.width, request.resolution.height)
-                    val surface = Surface(texture)
-                    request.provideSurface(surface, executor) { }
+                        textureEntry!!.surfaceTexture()?.let {
+                            it.setDefaultBufferSize(request.resolution.width, request.resolution.height)
+                            val surface = Surface(it)
+                            request.provideSurface(surface, executor) { }
+                        }
                 }
 
                 // Build the preview to be shown on the Flutter texture
@@ -190,7 +191,7 @@ class MobileScanner(private val activity: Activity, private val textureRegistry:
                 camera = cameraProvider!!.bindToLifecycle(activity as LifecycleOwner, selector, preview, analysis)
 
                 val analysisSize = analysis.resolutionInfo?.resolution ?: Size(0, 0)
-                val previewSize = preview!!.resolutionInfo?.resolution ?: Size(0, 0)
+                val previewSize = preview?.resolutionInfo?.resolution ?: Size(0, 0)
                 Log.i("LOG", "Analyzer: $analysisSize")
                 Log.i("LOG", "Preview: $previewSize")
 
@@ -208,10 +209,10 @@ class MobileScanner(private val activity: Activity, private val textureRegistry:
                 // Enable torch if provided
                 camera!!.cameraControl.enableTorch(torch)
 
-                val resolution = preview!!.resolutionInfo!!.resolution
-                val portrait = camera!!.cameraInfo.sensorRotationDegrees % 180 == 0
-                val width = resolution.width.toDouble()
-                val height = resolution.height.toDouble()
+                val resolution = preview?.resolutionInfo?.resolution
+                val portrait = ((camera?.cameraInfo?.sensorRotationDegrees ?: 0) % 180) == 0
+                val width = resolution?.width?.toDouble() ?: 0
+                val height = resolution?.height?.toDouble() ?: 0
                 val size = if (portrait) mapOf("width" to width, "height" to height) else mapOf("width" to height, "height" to width)
                 val answer = mapOf("textureId" to textureEntry!!.id(), "size" to size, "torchable" to camera!!.cameraInfo.hasFlashUnit())
                 result.success(answer)
