@@ -150,72 +150,76 @@ class MobileScanner(private val activity: Activity, private val textureRegistry:
             val executor = ContextCompat.getMainExecutor(activity)
 
             future.addListener({
-                cameraProvider = future.get()
-                if (cameraProvider == null) {
-                    result.error("cameraProvider", "cameraProvider is null", null)
-                    return@addListener
-                }
-                cameraProvider!!.unbindAll()
-                textureEntry = textureRegistry.createSurfaceTexture()
-                if (textureEntry == null) {
-                    result.error("textureEntry", "textureEntry is null", null)
-                    return@addListener
-                }
-                // Preview
-                val surfaceProvider = Preview.SurfaceProvider { request ->
+                try {
+                    cameraProvider = future.get()
+                    if (cameraProvider == null) {
+                        result.error("cameraProvider", "cameraProvider is null", null)
+                        return@addListener
+                    }
+                    cameraProvider!!.unbindAll()
+                    textureEntry = textureRegistry.createSurfaceTexture()
+                    if (textureEntry == null) {
+                        result.error("textureEntry", "textureEntry is null", null)
+                        return@addListener
+                    }
+                    // Preview
+                    val surfaceProvider = Preview.SurfaceProvider { request ->
                         textureEntry?.surfaceTexture()?.let {
                             it.setDefaultBufferSize(request.resolution.width, request.resolution.height)
                             val surface = Surface(it)
                             request.provideSurface(surface, executor) { }
                         }
-                }
+                    }
 
-                // Build the preview to be shown on the Flutter texture
-                val previewBuilder = Preview.Builder()
-                if (ratio != null) {
-                    previewBuilder.setTargetAspectRatio(ratio)
-                }
-                preview = previewBuilder.build().apply { setSurfaceProvider(surfaceProvider) }
+                    // Build the preview to be shown on the Flutter texture
+                    val previewBuilder = Preview.Builder()
+                    if (ratio != null) {
+                        previewBuilder.setTargetAspectRatio(ratio)
+                    }
+                    preview = previewBuilder.build().apply { setSurfaceProvider(surfaceProvider) }
 
-                // Build the analyzer to be passed on to MLKit
-                val analysisBuilder = ImageAnalysis.Builder()
+                    // Build the analyzer to be passed on to MLKit
+                    val analysisBuilder = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                if (ratio != null) {
-                    analysisBuilder.setTargetAspectRatio(ratio)
+                    if (ratio != null) {
+                        analysisBuilder.setTargetAspectRatio(ratio)
+                    }
+                    val analysis = analysisBuilder.build().apply { setAnalyzer(executor, analyzer) }
+
+                    // Select the correct camera
+                    val selector = if (facing == 0) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+
+                    camera = cameraProvider!!.bindToLifecycle(activity as LifecycleOwner, selector, preview, analysis)
+
+                    val analysisSize = analysis.resolutionInfo?.resolution ?: Size(0, 0)
+                    val previewSize = preview?.resolutionInfo?.resolution ?: Size(0, 0)
+                    Log.i("LOG", "Analyzer: $analysisSize")
+                    Log.i("LOG", "Preview: $previewSize")
+
+                    if (camera == null) {
+                        result.error("camera", "camera is null", null)
+                        return@addListener
+                    }
+
+                    // Register the torch listener
+                    camera!!.cameraInfo.torchState.observe(activity) { state ->
+                        // TorchState.OFF = 0; TorchState.ON = 1
+                        sink?.success(mapOf("name" to "torchState", "data" to state))
+                    }
+
+                    // Enable torch if provided
+                    camera!!.cameraControl.enableTorch(torch)
+
+                    val resolution = preview?.resolutionInfo?.resolution
+                    val portrait = ((camera?.cameraInfo?.sensorRotationDegrees ?: 0) % 180) == 0
+                    val width = resolution?.width?.toDouble() ?: 0
+                    val height = resolution?.height?.toDouble() ?: 0
+                    val size = if (portrait) mapOf("width" to width, "height" to height) else mapOf("width" to height, "height" to width)
+                    val answer = mapOf("textureId" to textureEntry!!.id(), "size" to size, "torchable" to camera!!.cameraInfo.hasFlashUnit())
+                    result.success(answer)
+                } catch (e: Exception) {
+                    result.success(emptyMap<String, Any>())
                 }
-                val analysis = analysisBuilder.build().apply { setAnalyzer(executor, analyzer) }
-
-                // Select the correct camera
-                val selector = if (facing == 0) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
-
-                camera = cameraProvider!!.bindToLifecycle(activity as LifecycleOwner, selector, preview, analysis)
-
-                val analysisSize = analysis.resolutionInfo?.resolution ?: Size(0, 0)
-                val previewSize = preview?.resolutionInfo?.resolution ?: Size(0, 0)
-                Log.i("LOG", "Analyzer: $analysisSize")
-                Log.i("LOG", "Preview: $previewSize")
-
-                if (camera == null) {
-                    result.error("camera", "camera is null", null)
-                    return@addListener
-                }
-
-                // Register the torch listener
-                camera!!.cameraInfo.torchState.observe(activity) { state ->
-                    // TorchState.OFF = 0; TorchState.ON = 1
-                    sink?.success(mapOf("name" to "torchState", "data" to state))
-                }
-
-                // Enable torch if provided
-                camera!!.cameraControl.enableTorch(torch)
-
-                val resolution = preview?.resolutionInfo?.resolution
-                val portrait = ((camera?.cameraInfo?.sensorRotationDegrees ?: 0) % 180) == 0
-                val width = resolution?.width?.toDouble() ?: 0
-                val height = resolution?.height?.toDouble() ?: 0
-                val size = if (portrait) mapOf("width" to width, "height" to height) else mapOf("width" to height, "height" to width)
-                val answer = mapOf("textureId" to textureEntry!!.id(), "size" to size, "torchable" to camera!!.cameraInfo.hasFlashUnit())
-                result.success(answer)
             }, executor)
         }
     }
